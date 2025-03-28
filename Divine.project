@@ -1,0 +1,182 @@
+--[[ Divine.land Script ]]--
+
+--[[ SETTINGS ]]--
+local ESPConfig = {
+    NameColor = Color3.fromRGB(255, 255, 255),
+    ArmorYesColor = Color3.fromRGB(0, 255, 0),
+    ArmorNoColor = Color3.fromRGB(255, 0, 0), 
+    HazmatColor = Color3.fromRGB(0, 0, 255),
+    AttachmentColor = Color3.fromRGB(255, 165, 0),
+    OutlineColor = Color3.fromRGB(0, 0, 0),
+    renderDistance = 500,
+    updateInterval = 3.0,
+    renderInterval = 0.01,
+    offsets = {
+        x = -10,
+        nameX = -21,
+        nameY = 4,
+        kittedY = -8,
+        attachmentY = 16,
+        minYOffset = 0,
+        maxYOffset = 20
+    }
+}
+--[[------------]]--
+
+local log = "DivineLog.txt"  -- Define the log file name
+local localPlayer = game.Players.LocalPlayer
+local PlayersESP = {}
+
+-- Function for logging messages
+local function logMessage(message)
+    if type(message) == "string" and log then
+        pcall(function()
+            appendfile(log, "\n" .. message)
+        end)
+    else
+        error("Invalid message type or log filepath.")
+    end
+end
+
+-- Ensure required functions exist
+local function safeCall(func, ...)
+    local success, result = pcall(func, ...)
+    if not success then
+        logMessage("Error in function: " .. tostring(result))
+    end
+end
+
+-- AWP-compatible function to get active players (actors)
+local function getActors()
+    local actors = {}
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+            table.insert(actors, player.Character)
+        end
+    end
+    return actors
+end
+
+-- AWP-compatible function to execute code on an actor
+local function runOnActor(actor, script)
+    local success, err = pcall(function()
+        local player = game.Players:GetPlayerFromCharacter(actor)
+        if player then
+            loadstring(script)() -- Use loadstring to run provided script
+        end
+    end)
+    if not success then
+        logMessage("Failed to run on actor: " .. tostring(err))
+    end
+end
+
+local function createDrawing()
+    -- Placeholder function for ESP text objects
+    local nameDraw = { Text = "", Position = Vector2.new(), Color = ESPConfig.NameColor, Size = 14 }
+    local kitDraw = { Text = "", Position = Vector2.new(), Color = ESPConfig.ArmorNoColor, Size = 14 }
+    local attachDraw = { Text = "", Position = Vector2.new(), Color = ESPConfig.AttachmentColor, Size = 14 }
+    return nameDraw, kitDraw, attachDraw
+end
+
+local function bypassModule()
+    logMessage("Loading module bypass...")
+
+    task.spawn(function()
+        safeCall(function()
+            for _, func in ipairs(getgc()) do -- Ensure getgc is valid
+                if type(func) == "function" and islclosure(func) and not isexecutorclosure(func) then
+                    local constants = debug.getconstants(func)
+                    if constants[14] == "error" then
+                        hookfunction(func, LPH_NO_UPVALUES(function(name)
+                            if not tonumber(name) then
+                                local sky = Instance.new("Sky")
+                                sky.Name = name
+                            end
+                        end))
+                    end
+                end
+            end
+        end)
+
+        logMessage("Module bypass loaded successfully.")
+    end)
+end
+
+local function bypassActor()
+    safeCall(function()
+        task.spawn(function()
+            local actors = getActors()
+            for _, actor in ipairs(actors) do
+                logMessage("Loading actor bypass for " .. actor.Name)
+                
+                -- Loadstring to run an external script from your GitHub repository
+                local script = "loadstring(game:HttpGet('https://raw.githubusercontent.com/godbleon2023/Divine/master/Divine.lua'))()"
+                runOnActor(actor, script)
+            end
+        end)
+    end)
+end
+
+-- ESP Functions
+local function isModelOrPart(inst)
+    return inst:IsA("Model") or inst:IsA("Part") or inst:IsA("MeshPart") or inst:IsA("Camera")
+end
+
+local function getModelInfo(playerModel, playerHealth)
+    local modelName = playerModel.Name
+    local kittedStatus = "[Armor: No]"
+    local attachments = {}
+
+    -- Logic for detecting armor or attachments could be added here
+    return modelName, kittedStatus, table.concat(attachments, ", ")
+end
+
+local function updatePlayerESP(player, rootPart, kittedStatus, modelName, attachments)
+    local playerESP = PlayersESP[player]
+    if not playerESP then
+        local nameDraw, kitDraw, attachDraw = createDrawing()
+        playerESP = {
+            Part = rootPart,
+            NameDrawing = nameDraw,
+            KittedDrawing = kitDraw,
+            AttachmentDrawing = attachDraw,
+            Parent = player,
+            LastUpdate = { Kitted = "", Attachments = "" },
+            CurrentTargetModel = nil
+        }
+        PlayersESP[player] = playerESP
+    end
+
+    playerESP.NameDrawing.Text = modelName
+    playerESP.KittedDrawing.Text = kittedStatus
+    playerESP.AttachmentDrawing.Text = attachments
+end
+
+local function updatePlayers()
+    for _, player in ipairs(game.Players:GetPlayers()) do
+        if player ~= localPlayer and player.Character then
+            local rootPart = player.Character:FindFirstChild("HumanoidRootPart")
+            if rootPart then
+                local health = player.Character:FindFirstChildOfClass("Humanoid").Health
+                local modelName, kittedStatus, attachments = getModelInfo(player.Character, health)
+                updatePlayerESP(player, rootPart, kittedStatus, modelName, attachments)
+            end
+        end
+    end
+end
+
+local function startESP()
+    spawn(function()
+        while true do
+            task.wait(ESPConfig.updateInterval)
+            updatePlayers()
+        end
+    end)
+end
+
+-- Start the Divine.land script
+bypassModule()
+bypassActor()
+startESP()
+
+logMessage("Divine.land script loaded successfully.")
